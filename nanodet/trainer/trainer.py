@@ -2,6 +2,7 @@ import os
 import copy
 import warnings
 import torch
+import wandb
 from nanodet.util import mkdir, DataParallel, load_model_weight, save_model, MovingAverage, AverageMeter
 
 
@@ -9,7 +10,7 @@ class Trainer:
     """
     Epoch based trainer
     """
-    def __init__(self, rank, cfg, model, logger):
+    def __init__(self, rank, cfg, model, logger, wandb):
         self.rank = rank  # local rank for distributed training. For single gpu training, default is -1
         self.cfg = cfg
         self.model = model
@@ -17,6 +18,13 @@ class Trainer:
         self._init_optimizer()
         self._iter = 1
         self.epoch = 1
+        if rank in [-1, 0] and wandb and wandb.run is None:
+            # wandb English full doc : https://docs.wandb.ai/library, Chinese incomplete doc ： https://docs.wandb.ai/v/ch/library
+            # 浏览wandb github : https://github.com/wandb/examples 探索更多
+            wandb_run = wandb.init(config=cfg, project='NanoDet_SpecialVehicle', name=cfg.save_dir.split('/')[-1])
+            # 在yolov5中，wandb_run是用来在保存模型时提供wandb_run.id这个字典键值，以便通过这个wandb_run.id来resume，后面的watch, log等方法还是用wandb实例。
+            # 根据official doc(https://docs.wandb.ai/integrations/pytorch#options)，watch(model)只会记录gradients，不会记录parameters
+            wandb.watch(model, log="all", log_freq=100)  # log_freq也就是每几个iterations/steps/batches记录一次梯度
 
     def set_device(self, batch_per_gpu, gpu_ids, device):
         """
@@ -96,12 +104,17 @@ class Trainer:
                     step_losses[k].push(loss_stats[k].mean().item())
 
             if iter_id % self.cfg.log.interval == 0:
+                # 命令行窗口输出训练阶段的日志，epoch、iter、lr部分
                 log_msg = '{}|Epoch{}/{}|Iter{}({}/{})| lr:{:.2e}| '.format(mode, epoch, self.cfg.schedule.total_epochs,
                     self._iter, iter_id, num_iters, self.optimizer.param_groups[0]['lr'])
+                wandb.log({"Learning Rate": self.optimizer.param_groups[0]['lr']})
                 for l in step_losses:
+                    # 命令行窗口输出训练阶段的日志，loss部分
                     log_msg += '{}:{:.4f}| '.format(l, step_losses[l].avg())
                     if mode == 'train' and self.rank < 1:
+                        # 写入tensorboard
                         self.logger.scalar_summary('Train_loss/' + l, mode, step_losses[l].avg(), self._iter)
+                # 显示在命令行窗口界面并写入logs.txt
                 self.logger.log(log_msg)
             if mode == 'train':
                 self._iter += 1
@@ -137,16 +150,21 @@ class Trainer:
             self.lr_scheduler.step()
             save_model(self.rank, self.model, os.path.join(self.cfg.save_dir, 'model_last.pth'), epoch, self._iter, self.optimizer)
             for k, v in train_loss_dict.items():
+                # k 是 loss_bbox, loss_dfl, loss_qfl
                 self.logger.scalar_summary('Epoch_loss/' + k, 'train', v, epoch)
-
+                # 在Train Loss和k之间加个/起到划分等级的作用，这样这里的3个k都属于Train Loss这个大类下，而下面的3个k则都属于Val Loss大类下，tensorboard也使用/来区分tag等级
+                wandb.log({'Train Loss/' + k: v})
             # --------evaluate----------
             if self.cfg.schedule.val_intervals > 0 and epoch % self.cfg.schedule.val_intervals == 0:
                 with torch.no_grad():
                     results, val_loss_dict = self.run_epoch(self.epoch, val_loader, mode='val')
                 for k, v in val_loss_dict.items():
+                    # 下面的和上面的logger.scalar_summary 的tag都是Epoch_loss/' + k，所以它们在tensorboard中是绘制在同一幅图上
                     self.logger.scalar_summary('Epoch_loss/' + k, 'val', v, epoch)
+                    # 为了使验证时的准确度和损失的细粒度更高些，请在config yaml里把val_intervals改小，比如1，但是别改到log.interval去！
+                    wandb.log({'Val Loss/' + k: v})
                 eval_results = evaluator.evaluate(results, self.cfg.save_dir, epoch, self.logger, rank=self.rank)
-                if self.cfg.evaluator.save_key in eval_results:
+                if self.cfg.evaluator.save_key in eval_results:  # self.cfg.evaluator.save_key 默认是mAP
                     metric = eval_results[self.cfg.evaluator.save_key]
                     if metric > save_flag:
                         # ------save best model--------
@@ -155,7 +173,7 @@ class Trainer:
                         mkdir(self.rank, best_save_path)
                         save_model(self.rank, self.model, os.path.join(best_save_path, 'model_best.pth'), epoch,
                                    self._iter, self.optimizer)
-                        txt_path = os.path.join(best_save_path, "eval_results.txt")
+                        txt_path = os.path.join(best_save_path, "eval_results.txt")  # 从eval_results.txt可以看出哪些epoch的metric要比上一个epoch好
                         if self.rank < 1:
                             with open(txt_path, "a") as f:
                                 f.write("Epoch:{}\n".format(epoch))

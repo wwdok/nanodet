@@ -12,7 +12,7 @@ def main(config, input_shape=(3, 320, 320)):
 
 
 if __name__ == '__main__':
-    cfg_path = r"config/nanodet-m.yml"
+    cfg_path = r"../config/nanodet-m.yml"
     load_config(cfg, cfg_path)
     main(config=cfg,
          input_shape=(3, 320, 320)

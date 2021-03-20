@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import torch.distributed as dist
 
-from nanodet.util import mkdir, Logger, cfg, load_config
+from nanodet.util import mkdir, Logger, cfg, load_config, colorstr
 from nanodet.trainer import build_trainer
 from nanodet.data.collate import collate_function
 from nanodet.data.dataset import build_dataset
@@ -20,6 +20,8 @@ def parse_args():
                         help='node rank for distributed training')
     parser.add_argument('--seed', type=int, default=None,
                         help='random seed')
+    parser.add_argument('--use_wandb', action='store_true', default=True,
+                        help='whether to use wandb to record the training process')
     args = parser.parse_args()
     return args
 
@@ -45,6 +47,14 @@ def main(args):
     torch.backends.cudnn.benchmark = True
     mkdir(local_rank, cfg.save_dir)
     logger = Logger(local_rank, cfg.save_dir)
+    if args.use_wandb:
+        try:
+            import wandb
+            wandb.login()
+        except ImportError:
+            wandb = None
+            prefix = colorstr('wandb: ')
+            logger.log(f"{prefix}To use Weights & Biases for NanoDet logging, please install it with 'pip install wandb' first")
     if args.seed is not None:
         logger.log('Set random seed to {}'.format(args.seed))
         init_seeds(args.seed)
@@ -74,7 +84,7 @@ def main(args):
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=1,
                                                  pin_memory=True, collate_fn=collate_function, drop_last=True)
 
-    trainer = build_trainer(local_rank, cfg, model, logger)
+    trainer = build_trainer(local_rank, cfg, model, logger, wandb)
 
     if 'load_model' in cfg.schedule:
         trainer.load_model(cfg)
@@ -85,6 +95,10 @@ def main(args):
 
     logger.log('Starting training...')
     trainer.run(train_dataloader, val_dataloader, evaluator)
+    wandb.save(os.path.join(cfg.save_dir, "model_best/model_best.pth"))  # upload model ckpt to wandb cloud if necessary, there is 100 GB free storage
+    wandb.run.finish() if wandb and wandb.run else None
+    # To further optimize hyper-parameters with Sweep, please visit : https://github.com/wandb/examples/tree/master/examples/pytorch/pytorch-cnn-fashion
+    torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':

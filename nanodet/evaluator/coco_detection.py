@@ -3,6 +3,7 @@ from pycocotools.cocoeval import COCOeval
 import json
 import os
 import copy
+import wandb
 
 
 def xyxy2xywh(bbox):
@@ -62,4 +63,5 @@ class CocoDetectionEvaluator:
         for k, v in zip(self.metric_names, aps):
             eval_results[k] = v
             logger.scalar_summary('Val_coco_bbox/' + k, 'val', v, epoch)
+            wandb.log({'Val_coco_bbox/' + k: v})
         return eval_results

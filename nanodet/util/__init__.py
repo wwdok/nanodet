@@ -1,6 +1,6 @@
 from .rank_filter import rank_filter
 from .path import mkdir
-from .logger import Logger, MovingAverage, AverageMeter
+from .logger import Logger, MovingAverage, AverageMeter, colorstr
 from .data_parallel import DataParallel
 from .distributed_data_parallel import DDP
 from .check_point import load_model_weight, save_model
