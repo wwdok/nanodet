@@ -4,7 +4,7 @@ import random
 
 
 def random_brightness(img, delta):
-    img += random.uniform(-delta, delta)
+    img += random.uniform(-delta, delta)  # delta越大，代表这张图片随机生成的亮度范围越大
     return img
 
 
@@ -55,3 +55,21 @@ def color_aug_and_norm(meta, kwargs):
     return meta
 
 
+if __name__ == '__main__':
+    img = cv2.imread(r'../../../demo/input/Snipaste_2021-03-13_11-04-57.jpg').astype(np.float32) / 255
+
+    # img1 = random_brightness(img, 0.5)
+    # cv2.imshow('random_brightness : 0.5', img1)
+
+    # img2 = random_contrast(img, 0.5, 2.0)
+    # cv2.imshow('random_contrast : 0.5 - 2.0', img2)
+
+    # img3 = random_saturation(img, 0.5, 1.5)
+    # cv2.imshow('random_contrast : 0.5 - 1.5', img3)
+
+    mean = [103.53, 116.28, 123.675]
+    std = [57.375, 57.12, 58.395]
+    img4 = _normalize(img, mean, std)
+    cv2.imshow('_normalize : 115 - 57', img4)
+
+    cv2.waitKey(0)
