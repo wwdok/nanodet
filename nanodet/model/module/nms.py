@@ -69,7 +69,7 @@ def multiclass_nms(multi_bboxes,
     return dets, labels[keep]
 
 
-def batched_nms(boxes, scores, idxs, nms_cfg, class_agnostic=False):
+def batched_nms(boxes, scores, idxs, nms_cfg, class_agnostic=True):
     """Performs non-maximum suppression in a batched fashion.
     Modified from https://github.com/pytorch/vision/blob
     /505cd6957711af790211896d32b40291bea1bc21/torchvision/ops/boxes.py#L39.

@@ -122,3 +122,4 @@ work_dirs/
 /workspace
 /wandb
 /model_zoo_offcial
+/demo/input
