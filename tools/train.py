@@ -20,10 +20,8 @@ def parse_args():
                         help='node rank for distributed training')
     parser.add_argument('--seed', type=int, default=None,
                         help='random seed')
-    parser.add_argument('--use_wandb', action='store_true', default=True,
-                        help='whether to use wandb to record the training process')
-    args = parser.parse_args()
-    return args
+    args, unknown = parser.parse_known_args()
+    return args, unknown
 
 
 def init_seeds(seed=0):
@@ -40,8 +38,24 @@ def init_seeds(seed=0):
         torch.backends.cudnn.benchmark = False
 
 
-def main(args):
+def main(args, unknown):
     load_config(cfg, args.config)
+    """
+    Following block of code is for integrated with wandb sweep, after you run sth like `wandb agent wadewang/NanoDet_SpecialVehicle/82y9e619`
+    wandb will generate command like `` to execute, original argparse can't not handle these new added arguments. Then i 
+    use https://stackoverflow.com/a/48057478/12169382 and https://github.com/rbgirshick/yacs#command-line-overrides to solve this problem.
+    """
+    print(f'Previous cfg is {cfg}')
+    opt_list = []
+    for c in range(len(unknown)):
+        # print(unknown[c])  # eg:'--data.train.pipeline.brightness=0.462972446342085'
+        # print(unknown[c].split('--'))  # e.g:['', 'data.train.pipeline.brightness=0.462972446342085']
+        opt_list.extend(unknown[c].split('--')[1].split('='))
+    # print(opt_list)
+    cfg.merge_from_list(opt_list)
+    print(f'Present cfg is {cfg}')
+    # assert False  # add stop point here to facilitate debugging
+
     local_rank = int(args.local_rank)
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
@@ -103,5 +117,6 @@ def main(args):
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    main(args)
+    args, unknown = parse_args()
+    # print(f'unknown is {unknown}')
+    main(args, unknown)
