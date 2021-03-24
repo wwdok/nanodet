@@ -109,7 +109,7 @@ def main(args, unknown):
 
     logger.log('Starting training...')
     trainer.run(train_dataloader, val_dataloader, evaluator)
-    # 要运行wandb.save()的话，需要先去设置保存文件夹的属性-安全-Users完全控制，这样本程序才有权限写入文件
+    # 要运行wandb.save()的话，需要先去右键设置保存文件夹的属性-安全-Users完全控制，这样本程序才有权限写入文件
     wandb.save(os.path.join(cfg.save_dir, "model_best/model_best.pth"))  # upload model ckpt to wandb cloud if necessary, there is 100 GB free storage
     wandb.run.finish() if wandb and wandb.run else None
     # To further optimize hyper-parameters with Sweep, please visit : https://github.com/wandb/examples/tree/master/examples/pytorch/pytorch-cnn-fashion
