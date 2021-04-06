@@ -1,5 +1,5 @@
 #Config File example
-save_dir: workspace/nanodet_m_320_special_vehicle_9classes_8 # In order to review training results afterwars more clear, set this directory
+save_dir: workspace/dummy # In order to review training results afterwars more clear, set this directory
 model:
   arch:
     name: GFL
@@ -10,7 +10,7 @@ model:
       activation: LeakyReLU
     fpn:
       name: PAN
-      in_channels: [176, 352, 704]
+      in_channels: [116, 232, 464]
       out_channels: 96
       start_level: 0
       num_outs: 3
@@ -32,7 +32,7 @@ model:
           name: QualityFocalLoss
           use_sigmoid: True
           beta: 2.0
-          loss_weight: 2.0
+          loss_weight: 1.0
         loss_dfl:
           name: DistributionFocalLoss
           loss_weight: 0.25
@@ -57,9 +57,9 @@ data:
       shear: 0
       translate: 0.5
       flip: 0.5
-      brightness: 0.2
-      contrast: [0.8, 1.2]
-      saturation: [0.8, 1.2]
+      brightness: 0.5
+      contrast: [0.5, 2.0]
+      saturation: [0.5, 1.5]
       normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
   val:
     name: xml_dataset
@@ -79,20 +79,22 @@ schedule:
   load_model: E:/Repo/nanodet/model_zoo_official/nanodet_m.pth
   optimizer:
     name: SGD
-    lr: 0.03  # Originally batchsize is 160，lr is 0.14，when i change batchsize to 32，lr should also change to 0.028，keep batchsize*lr the same
+    lr: 0.02  # Originally batchsize is 160，lr is 0.14，when i change batchsize to 32，lr should also change to 0.028，keep batchsize*lr the same
+    # 后来我从tensorboard的曲线图看出在第一阶段和第二阶段之间有个骤降，所以我决定把初始学习率设得低一点，从0.028改成0.02
     momentum: 0.9
-    weight_decay: 0.00015
+    weight_decay: 0.0001
     nesterov: True
   warmup:
     name: linear
-    steps: 500
+    steps: 300
     ratio: 0.1
   total_epochs: 250
   lr_schedule:
-    name: LambdaLR  # MultiStepLR
+    name: MultiStepLR
     milestones: [50,150,170,190]  # [130,160,175,185]
     gamma: 0.1
-    lr_lambda: None
+    max_lr: 0.05
+    total_steps: 250
   val_intervals: 1
 evaluator:
   name: CocoDetectionEvaluator

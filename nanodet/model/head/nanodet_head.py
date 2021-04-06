@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from nanodet.util import multi_apply
-from ..module.conv import ConvModule, DepthwiseConvModule
-from ..module.init_weights import normal_init
-from .gfl_head import GFLHead
+from nanodet.model.module.conv import ConvModule, DepthwiseConvModule
+from nanodet.model.module.init_weights import normal_init
+from nanodet.model.head.gfl_head import GFLHead
 
 
 class NanoDetHead(GFLHead):
@@ -127,3 +127,23 @@ class NanoDetHead(GFLHead):
             cls_score = torch.sigmoid(cls_score).reshape(1, self.num_classes, -1).permute(0, 2, 1)
             bbox_pred = bbox_pred.reshape(1, (self.reg_max + 1) * 4, -1).permute(0, 2, 1)
         return cls_score, bbox_pred
+
+
+if __name__ == "__main__":
+    from nanodet.util import cfg, load_config
+    args_config = r'../../../config/nanodet-m.yml'
+    load_config(cfg, args_config)
+    head_cfg = cfg.model.arch.head
+    nanodethead = NanoDetHead(**head_cfg)
+    print(nanodethead)
+    test_data = tuple([torch.rand(5, 96, 40, 40), torch.rand(5, 96, 20, 20), torch.rand(5, 96, 10, 10)])
+    test_outputs = nanodethead(test_data)
+    for branch in test_outputs:
+        for t in branch:
+            print(t.size())
+            # torch.Size([5, 80, 40, 40])
+            # torch.Size([5, 80, 20, 20])
+            # torch.Size([5, 80, 10, 10])
+            # torch.Size([5, 32, 40, 40])
+            # torch.Size([5, 32, 20, 20])
+            # torch.Size([5, 32, 10, 10])

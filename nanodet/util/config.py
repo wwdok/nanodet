@@ -28,8 +28,11 @@ cfg.test = CfgNode()
 
 def load_config(cfg, args_cfg):
     cfg.defrost()
-    cfg.merge_from_file(args_cfg)
-    cfg.freeze()
+    if isinstance(args_cfg, list):
+        cfg.merge_from_list(args_cfg)
+    else:
+        cfg.merge_from_file(args_cfg)
+    # cfg.freeze()  # comment out this line is for changing `fpn_cfg.in_channels` in one_stage.py
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@
 #include "YoloV4.h"
 #include "NanoDet.h"
 
-
+// JNI_OnLoad 和 JNI_OnUnload 都是jni.h里定义的函数，这里对其进行重写
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     ncnn::create_gpu_instance();
     if (ncnn::get_gpu_count() > 0) {

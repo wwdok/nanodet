@@ -1,5 +1,5 @@
 #Config File example
-save_dir: workspace/nanodet_m_320_special_vehicle_9classes_8 # In order to review training results afterwars more clear, set this directory
+save_dir: workspace/nanodet_m_416_special_vehicle_9classes_sweep # In order to review training results afterwars more clear, set this directory
 model:
   arch:
     name: GFL
@@ -10,7 +10,7 @@ model:
       activation: LeakyReLU
     fpn:
       name: PAN
-      in_channels: [176, 352, 704]
+      in_channels: [116, 232, 464]
       out_channels: 96
       start_level: 0
       num_outs: 3
@@ -24,7 +24,7 @@ model:
       octave_base_scale: 5
       scales_per_octave: 1
       strides: [8, 16, 32]
-      reg_max: 7
+      reg_max: 10
       norm_cfg:
         type: BN
       loss:
@@ -32,10 +32,10 @@ model:
           name: QualityFocalLoss
           use_sigmoid: True
           beta: 2.0
-          loss_weight: 2.0
+          loss_weight: 2.5
         loss_dfl:
           name: DistributionFocalLoss
-          loss_weight: 0.25
+          loss_weight: 0.5
         loss_bbox:
           name: GIoULoss
           loss_weight: 2.0
@@ -47,7 +47,7 @@ data:
     class_names: *class_names
     img_path: E:/Dataset/SpecialVehicle/all-images/train  #Please fill in train image path
     ann_path: E:/Dataset/SpecialVehicle/all-annotations/train  #Please fill in train xml path
-    input_size: [320,320] #[w,h]
+    input_size: [416,416] #[w,h]
     keep_ratio: True
     pipeline:
       perspective: 0.0
@@ -66,7 +66,7 @@ data:
     class_names: *class_names
     img_path: E:/Dataset/SpecialVehicle/all-images/val  #Please fill in train image path
     ann_path: E:/Dataset/SpecialVehicle/all-annotations/val  #Please fill in train xml path
-    input_size: [320,320] #[w,h]
+    input_size: [416,416] #[w,h]
     keep_ratio: True
     pipeline:
       normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
@@ -76,18 +76,18 @@ device:
   batchsize_per_gpu: 32
 schedule:
 #  resume:
-  load_model: E:/Repo/nanodet/model_zoo_official/nanodet_m.pth
+  load_model: E:/Repo/nanodet/model_zoo_official/nanodet_m_416.pth
   optimizer:
     name: SGD
-    lr: 0.03  # Originally batchsize is 160，lr is 0.14，when i change batchsize to 32，lr should also change to 0.028，keep batchsize*lr the same
+    lr: 0.02  # Originally batchsize is 160，lr is 0.14，when i change batchsize to 32，lr should also change to 0.028，keep batchsize*lr the same
     momentum: 0.9
-    weight_decay: 0.00015
+    weight_decay: 0.0001
     nesterov: True
   warmup:
     name: linear
     steps: 500
     ratio: 0.1
-  total_epochs: 250
+  total_epochs: 200
   lr_schedule:
     name: LambdaLR  # MultiStepLR
     milestones: [50,150,170,190]  # [130,160,175,185]

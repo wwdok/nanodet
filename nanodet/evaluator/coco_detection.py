@@ -63,5 +63,6 @@ class CocoDetectionEvaluator:
         for k, v in zip(self.metric_names, aps):
             eval_results[k] = v
             logger.scalar_summary('Val_coco_bbox/' + k, 'val', v, epoch)
+            # This is a bug when not use wandb
             wandb.log({'Val_coco_bbox/' + k: v})
         return eval_results

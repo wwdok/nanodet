@@ -3,7 +3,7 @@ import os
 import time
 import torch
 import argparse
-from nanodet.util import cfg, load_config, Logger
+from nanodet.util import cfg, load_config, Logger,load_config
 from nanodet.model.arch import build_model
 from nanodet.util import load_model_weight
 from nanodet.data.transform import Pipeline
@@ -16,10 +16,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('demo', default='image', help='demo type, eg. image, video and webcam')
     parser.add_argument('--config', help='model config file path')
+    parser.add_argument('--cfg_list', nargs="*", help='sweep generated parameters list')
     parser.add_argument('--model', help='model file path')
-    parser.add_argument('--path', default='./demo', help='path to images or video')
+    parser.add_argument('--path', default='./demo/input', help='path to images or video')
     parser.add_argument('--camid', type=int, default=0, help='webcam demo camera id')
-    parser.add_argument('--save_result', action='store_true', help='whether to save the inference result of image/video')
+    parser.add_argument('--score_thres', default=0.4, help='only inference score above this value will be show up')
+    parser.add_argument('--save_result', default=True, action='store_true', help='whether to save the inference result of image/video')
     args = parser.parse_args()
     return args
 
@@ -82,8 +84,11 @@ def main():
     args = parse_args()
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
-
-    load_config(cfg, args.config)
+    load_config(cfg, args.config)  # load basic "constant" parameters
+    if args.cfg_list is not None:
+        print(f'current cfg is {cfg}')
+        print(f'args.cfg_list is {args.cfg_list}')
+        load_config(cfg, args.cfg_list)  # load sweep "variable" parameters
     logger = Logger(-1, use_tensorboard=False)
     predictor = Predictor(cfg, args.model, logger, device='cuda:0')
     logger.log('Press "Esc", "q" or "Q" to exit.')
@@ -96,16 +101,17 @@ def main():
         files.sort()
         for image_name in files:
             meta, res = predictor.inference(image_name)
-            result_image = predictor.visualize(res, meta, cfg.class_names, 0.35)
+            result_image = predictor.visualize(res, meta, cfg.class_names, args.score_thres)
             if args.save_result:
                 save_folder = os.path.join(cfg.save_dir, time.strftime("%Y_%m_%d_%H_%M_%S", current_time))
                 if not os.path.exists(save_folder):
                     os.mkdir(save_folder)
                 save_file_name = os.path.join(save_folder, os.path.basename(image_name))
                 cv2.imwrite(save_file_name, result_image)
-            ch = cv2.waitKey(0)
-            if ch == 27 or ch == ord('q') or ch == ord('Q'):
-                break
+            # comment out following code to not display window, directly save result images to folder
+            # ch = cv2.waitKey(0)
+            # if ch == 27 or ch == ord('q') or ch == ord('Q'):
+            #     break
     elif args.demo == 'video' or args.demo == 'webcam':
         cap = cv2.VideoCapture(args.path if args.demo == 'video' else args.camid)
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)  # float
@@ -113,7 +119,7 @@ def main():
         fps = cap.get(cv2.CAP_PROP_FPS)
         save_folder = os.path.join(cfg.save_dir, time.strftime("%Y_%m_%d_%H_%M_%S", current_time))
         if not os.path.exists(save_folder):
-            os.mkdir(save_folder)
+            os.makedirs(save_folder)
         save_path = os.path.join(save_folder, args.path.split('/')[-1]) if args.demo == 'video' else os.path.join(save_folder, 'camera.mp4')
         print(f'save_path is {save_path}')
         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (int(width), int(height)))

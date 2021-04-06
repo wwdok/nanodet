@@ -1,30 +1,38 @@
-#Config File example
-save_dir: workspace/nanodet_m_320_special_vehicle_9classes_8 # In order to review training results afterwars more clear, set this directory
+# nanodet-EfficientNet-Lite1_416
+# COCO mAP(0.5:0.95) = 0.303
+#             AP_50  = 0.471
+#             AP_75  = 0.313
+#           AP_small = 0.122
+#               AP_m = 0.321
+#               AP_l = 0.432
+save_dir: workspace/efficient1_416_special_vehicle_9classes_base  # In order to review training results afterwars more clear, set this directory
 model:
   arch:
     name: GFL
     backbone:
-      name: ShuffleNetV2
-      model_size: 1.0x
-      out_stages: [2,3,4]
-      activation: LeakyReLU
+      name: EfficientNetLite
+      model_name: efficientnet_lite1
+      out_stages: [2,4,6]
+      activation: ReLU6
+      pretrain: True
     fpn:
       name: PAN
-      in_channels: [176, 352, 704]
-      out_channels: 96
+      in_channels: [40, 112, 320]
+      out_channels: 128
       start_level: 0
       num_outs: 3
     head:
       name: NanoDetHead
-      num_classes: 9 #Please fill in the number of categories (not include background category)
-      input_channel: 96
-      feat_channels: 96
-      stacked_convs: 2
+      num_classes: 9  #Please fill in the number of categories (not include background category)
+      input_channel: 128
+      feat_channels: 128
+      stacked_convs: 3
+      activation: ReLU6
       share_cls_reg: True
-      octave_base_scale: 5
+      octave_base_scale: 8
       scales_per_octave: 1
       strides: [8, 16, 32]
-      reg_max: 7
+      reg_max: 10
       norm_cfg:
         type: BN
       loss:
@@ -47,50 +55,50 @@ data:
     class_names: *class_names
     img_path: E:/Dataset/SpecialVehicle/all-images/train  #Please fill in train image path
     ann_path: E:/Dataset/SpecialVehicle/all-annotations/train  #Please fill in train xml path
-    input_size: [320,320] #[w,h]
+    input_size: [416,416] #[w,h]
     keep_ratio: True
     pipeline:
       perspective: 0.0
-      scale: [0.6, 1.4]
+      scale: [0.5, 1.5]
       stretch: [[1, 1], [1, 1]]
       rotation: 0
       shear: 0
       translate: 0.5
       flip: 0.5
       brightness: 0.2
-      contrast: [0.8, 1.2]
-      saturation: [0.8, 1.2]
-      normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
+      contrast: [0.6, 1.4]
+      saturation: [0.5, 1.2]
+      normalize: [[127.0, 127.0, 127.0], [128.0, 128.0, 128.0]]
   val:
     name: xml_dataset
     class_names: *class_names
     img_path: E:/Dataset/SpecialVehicle/all-images/val  #Please fill in train image path
     ann_path: E:/Dataset/SpecialVehicle/all-annotations/val  #Please fill in train xml path
-    input_size: [320,320] #[w,h]
+    input_size: [416,416] #[w,h]
     keep_ratio: True
     pipeline:
-      normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
+      normalize: [[127.0, 127.0, 127.0], [128.0, 128.0, 128.0]]
 device:
   gpu_ids: [0]
-  workers_per_gpu: 8
-  batchsize_per_gpu: 32
+  workers_per_gpu: 1
+  batchsize_per_gpu: 12
 schedule:
 #  resume:
-  load_model: E:/Repo/nanodet/model_zoo_official/nanodet_m.pth
+  load_model: E:/Repo/nanodet/model_zoo_official/nanodet-EfficientNet-Lite1_416.pth
   optimizer:
     name: SGD
-    lr: 0.03  # Originally batchsize is 160，lr is 0.14，when i change batchsize to 32，lr should also change to 0.028，keep batchsize*lr the same
+    lr: 0.002  # Originally batchsize is 150，lr is 0.15，when i change batchsize to 30，lr should also change to 0.03，keep batchsize*lr the same
     momentum: 0.9
-    weight_decay: 0.00015
+    weight_decay: 0.0001
     nesterov: True
   warmup:
     name: linear
     steps: 500
-    ratio: 0.1
-  total_epochs: 250
+    ratio: 0.01
+  total_epochs: 200
   lr_schedule:
     name: LambdaLR  # MultiStepLR
-    milestones: [50,150,170,190]  # [130,160,175,185]
+    milestones: [100,160,185,195]
     gamma: 0.1
     lr_lambda: None
   val_intervals: 1

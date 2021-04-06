@@ -119,7 +119,9 @@ work_dirs/
 *.sh~
 
 # some big size folder
-/workspace
-/wandb
-/model_zoo_offcial
-/demo/input
+workspace
+wandb
+model_zoo_offcial/*
+*.onnx
+demo/input
+logs.txt

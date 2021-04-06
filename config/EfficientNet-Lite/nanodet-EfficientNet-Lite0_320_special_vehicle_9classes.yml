@@ -5,7 +5,7 @@
 #           AP_small = 0.079
 #               AP_m = 0.243
 #               AP_l = 0.406
-save_dir: workspace/efficient0_320_special_vehicle_9classes  # In order to review training results afterwars more clear, set this directory
+save_dir: workspace/efficient0_320_special_vehicle_9classes_sweep  # In order to review training results afterwars more clear, set this directory
 model:
   arch:
     name: GFL
@@ -22,7 +22,7 @@ model:
       num_outs: 3
     head:
       name: NanoDetHead
-      num_classes: 5  #Please fill in the number of categories (not include background category)
+      num_classes: 9  #Please fill in the number of categories (not include background category)
       input_channel: 96
       feat_channels: 96
       activation: ReLU6
@@ -39,10 +39,10 @@ model:
           name: QualityFocalLoss
           use_sigmoid: True
           beta: 2.0
-          loss_weight: 1.0
+          loss_weight: 2.0
         loss_dfl:
           name: DistributionFocalLoss
-          loss_weight: 0.25
+          loss_weight: 0.6
         loss_bbox:
           name: GIoULoss
           loss_weight: 2.0
@@ -86,18 +86,20 @@ schedule:
   load_model: E:/Repo/nanodet/model_zoo_official/nanodet-EfficientNet-Lite0_320.pth
   optimizer:
     name: SGD
-    lr: 0.03  # Originally batchsize is 150，lr is 0.15，when i change batchsize to 30，lr should also change to 0.03，keep batchsize*lr the same
+    lr: 0.002  # Originally batchsize is 150，lr is 0.15，when i change batchsize to 30，lr should also change to 0.03，keep batchsize*lr the same
     momentum: 0.9
     weight_decay: 0.0001
+    nesterov: True
   warmup:
     name: linear
     steps: 500
     ratio: 0.01
   total_epochs: 200
   lr_schedule:
-    name: MultiStepLR
-    milestones: [50,150,180,190]
+    name: LambdaLR  # MultiStepLR
+    milestones: [65,190,230,240]
     gamma: 0.1
+    lr_lambda: None
   val_intervals: 1
 evaluator:
   name: CocoDetectionEvaluator

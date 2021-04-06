@@ -1,7 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from ..module.conv import ConvModule
-from .fpn import FPN
+from nanodet.model.module.conv import ConvModule
+from nanodet.model.fpn.fpn import FPN
+import torch
 
 
 class PAN(FPN):
@@ -80,3 +81,15 @@ class PAN(FPN):
             inter_outs[i] for i in range(1, used_backbone_levels)
         ])
         return tuple(outs)
+
+
+if __name__ == "__main__":
+    pan = PAN(in_channels=[116, 232, 464],
+              out_channels=96,
+              num_outs=3,
+              start_level=0)
+    print(pan)
+    test_data = tuple([torch.rand(5, 116, 40, 40), torch.rand(5, 232, 20, 20), torch.rand(5, 464, 10, 10)])
+    test_outputs = pan(test_data)
+    for out in test_outputs:
+        print(out.size())

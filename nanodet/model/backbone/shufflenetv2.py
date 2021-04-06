@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-from ..module.activation import act_layers
+from nanodet.model.module.activation import act_layers  # relative import cause error, so i change it to absolute import
 
 model_urls = {
     'shufflenetv2_0.5x': 'https://download.pytorch.org/models/shufflenetv2_x0.5-f707e7126e.pth',
@@ -13,6 +13,7 @@ model_urls = {
 
 def channel_shuffle(x, groups):
     # type: (torch.Tensor, int) -> torch.Tensor
+    # print('Running channel_shuffle')  # This line of code proves that the channel_shuffle is also performed during the inference phase
     batchsize, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
 
@@ -69,12 +70,13 @@ class ShuffleV2Block(nn.Module):
     def forward(self, x):
         if self.stride == 1:
             x1, x2 = x.chunk(2, dim=1)
-            out = torch.cat((x1, self.branch2(x2)), dim=1)
+            out = torch.cat((x1, self.branch2(x2)), dim=1)  # Just because of the torch.cat, the final output channel number
+            # is twice the number of output_channels of nn.Conv2d.
         else:
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
 
         out = channel_shuffle(out, 2)
-
+        # print(out.shape)  # to prove that the featuremap size only reduce at the first repeat, The remaining 3 or 7 ShuffleV2Block did not change the size of the feature map
         return out
 
 
@@ -127,13 +129,14 @@ class ShuffleNetV2(nn.Module):
             setattr(self, name, nn.Sequential(*seq))
             input_channels = output_channels
         output_channels = self._stage_out_channels[-1]
-        if self.with_last_conv:
+        if self.with_last_conv:  # Original shufflenetv2 actually contains con5，go to https://colab.research.google.com/github/pytorch/pytorch.github.io/blob/master/assets/hub/pytorch_vision_shufflenet_v2.ipynb to explore more
             self.conv5 = nn.Sequential(
                 nn.Conv2d(input_channels, output_channels, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(output_channels),
                 act_layers(activation),
             )
-            self.stage4.add_module('conv5', self.conv5)
+            # self.stage4.add_module('conv5', self.conv5)  # My proposed issue : https://github.com/RangiLyu/nanodet/issues/195
+
         self._initialize_weights(pretrain)
 
     def forward(self, x):
@@ -142,7 +145,11 @@ class ShuffleNetV2(nn.Module):
         output = []
         for i in range(2, 5):
             stage = getattr(self, 'stage{}'.format(i))
+            # print(f'=========stage{i}==========')
+            # print(stage)
+            # print(f'previous x.shape is : \n {x.shape}')
             x = stage(x)
+            # print(f'after x.shape is : \n {x.shape}')
             if i in self.out_stages:
                 output.append(x)
         return tuple(output)
@@ -176,7 +183,7 @@ class ShuffleNetV2(nn.Module):
             if url is not None:
                 pretrained_state_dict = model_zoo.load_url(url)
                 print('=> loading pretrained model {}'.format(url))
-                self.load_state_dict(pretrained_state_dict, strict=False)
+                self.load_state_dict(pretrained_state_dict, strict=False)  # 在参数加载过程中如果有unexpected_keys或者missing_keys,如果strict=True就报错 ; 如果strict=False，则会忽略这些细节。
 
 
 if __name__ == "__main__":

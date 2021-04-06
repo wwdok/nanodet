@@ -4,22 +4,26 @@ import logging
 import argparse
 import numpy as np
 import torch.distributed as dist
-
-from nanodet.util import mkdir, Logger, cfg, load_config, colorstr
+import time
+from nanodet.util import mkdir, Logger, cfg, load_config
 from nanodet.trainer import build_trainer
 from nanodet.data.collate import collate_function
 from nanodet.data.dataset import build_dataset
 from nanodet.model.arch import build_model
 from nanodet.evaluator import build_evaluator
 
-
+"""
+不要在pycharm里一键运行该脚本启动训练。不然生成的workspace子文件夹和wandb子文件夹都会被保存在tools里，而且config yml和demo.py的路径也要跟着改
+"""
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--config', default='config/EfficientNet-Lite/nanodet-EfficientNet-Lite0_320_special_vehicle_9classes.yml', help='train config file path')  # config/nanodet_m_416_special_vehicle_9classes.yml
     parser.add_argument('--local_rank', default=-1, type=int,
                         help='node rank for distributed training')
     parser.add_argument('--seed', type=int, default=None,
                         help='random seed')
+    parser.add_argument('--use_wandb', action='store_true', default=True,
+                        help='whether to use wandb to record the training process')
     args, unknown = parser.parse_known_args()
     return args, unknown
 
@@ -45,30 +49,35 @@ def main(args, unknown):
     wandb will generate command like `` to execute, original argparse can't not handle these new added arguments. Then i 
     use https://stackoverflow.com/a/48057478/12169382 and https://github.com/rbgirshick/yacs#command-line-overrides to solve this problem.
     """
-    print(f'Previous cfg is {cfg}')
-    opt_list = []
-    for c in range(len(unknown)):
-        # print(unknown[c])  # eg:'--data.train.pipeline.brightness=0.462972446342085'
-        # print(unknown[c].split('--'))  # e.g:['', 'data.train.pipeline.brightness=0.462972446342085']
-        opt_list.extend(unknown[c].split('--')[1].split('='))
+    # print(f'Previous cfg is {cfg}')
+    opt_list = list()
+    if len(unknown) != 0:
+        for c in range(len(unknown)):
+            # print(unknown[c])  # eg:'--data.train.pipeline.brightness=0.462972446342085'
+            # print(unknown[c].split('--'))  # e.g:['', 'data.train.pipeline.brightness=0.462972446342085']
+            opt_list.extend(unknown[c].split('--')[1].split('='))
     # print(opt_list)
     cfg.merge_from_list(opt_list)
-    print(f'Present cfg is {cfg}')
+    # print(f'Present cfg is {cfg}')
     # assert False  # add stop point here to facilitate debugging
 
     local_rank = int(args.local_rank)
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
+    # add save_dir_extension to avoid overrider previous folder when sweep
+    save_dir_extension = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
+    cfg.save_dir = cfg.save_dir + save_dir_extension
+    opt_list.extend(['save_dir',cfg.save_dir])
     mkdir(local_rank, cfg.save_dir)
     logger = Logger(local_rank, cfg.save_dir)
+    wandb = None
     if args.use_wandb:
         try:
             import wandb
             wandb.login()
         except ImportError:
             wandb = None
-            prefix = colorstr('wandb: ')
-            logger.log(f"{prefix}To use Weights & Biases for NanoDet logging, please install it with 'pip install wandb' first")
+            logger.log(f"wandb: To use Weights & Biases for NanoDet logging, please install it with 'pip install wandb' first")
     if args.seed is not None:
         logger.log('Set random seed to {}'.format(args.seed))
         init_seeds(args.seed)
@@ -109,8 +118,14 @@ def main(args, unknown):
 
     logger.log('Starting training...')
     trainer.run(train_dataloader, val_dataloader, evaluator)
+    trained_model = os.path.join(cfg.save_dir, "model_best/model_best.pth")
+    print(f'opt_list is {opt_list}')
+    opt_list_string = ' '.join(opt_list)  # convert list to string, or the argparse will make it as ["['device.batchsize_per_gpu',","'16',"......
+    inderence_command = f'python demo/demo.py image --config {args.config} --cfg_list {opt_list_string} --model {trained_model} --path demo/input'
+    print(inderence_command)
+    os.system(inderence_command)
     # 要运行wandb.save()的话，需要先去右键设置保存文件夹的属性-安全-Users完全控制，这样本程序才有权限写入文件
-    wandb.save(os.path.join(cfg.save_dir, "model_best/model_best.pth"))  # upload model ckpt to wandb cloud if necessary, there is 100 GB free storage
+    # wandb.save(trained_model)  # upload model ckpt to wandb cloud if necessary, there is 100 GB free storage
     wandb.run.finish() if wandb and wandb.run else None
     # To further optimize hyper-parameters with Sweep, please visit : https://github.com/wandb/examples/tree/master/examples/pytorch/pytorch-cnn-fashion
     torch.cuda.empty_cache()

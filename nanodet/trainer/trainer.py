@@ -3,6 +3,7 @@ import copy
 import warnings
 import torch
 import wandb
+import math
 from nanodet.util import mkdir, DataParallel, load_model_weight, save_model, MovingAverage, AverageMeter
 
 
@@ -19,12 +20,16 @@ class Trainer:
         self._iter = 1
         self.epoch = 1
         if rank in [-1, 0] and wandb and wandb.run is None:
+            self.use_wandb = True
             # wandb English full doc : https://docs.wandb.ai/library, Chinese incomplete doc ： https://docs.wandb.ai/v/ch/library
             # 浏览wandb github : https://github.com/wandb/examples 探索更多
             wandb_run = wandb.init(config=cfg, project='NanoDet_SpecialVehicle', name=cfg.save_dir.split('/')[-1])
             # 在yolov5中，wandb_run是用来在保存模型时提供wandb_run.id这个字典键值，以便通过这个wandb_run.id来resume，后面的watch, log等方法还是用wandb实例。
             # 根据official doc(https://docs.wandb.ai/integrations/pytorch#options)，watch(model)只会记录gradients，不会记录parameters
-            wandb.watch(model, log="all", log_freq=100)  # log_freq也就是每几个iterations/steps/batches记录一次梯度
+            wandb.watch(model, log="gradients", log_freq=100)  # log_freq也就是每几个iterations/steps/batches记录一次梯度，
+            # log="all"的话，还会多保存parameters信息，保存的信息多了就会增加run文件夹的大小，几百兆的级别
+        else:
+            self.use_wandb = False
 
     def set_device(self, batch_per_gpu, gpu_ids, device):
         """
@@ -42,12 +47,23 @@ class Trainer:
         optimizer_cfg = copy.deepcopy(self.cfg.schedule.optimizer)
         name = optimizer_cfg.pop('name')
         Optimizer = getattr(torch.optim, name)
+        if name == 'Adam':  # torch.optim.Adam(params, lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+            optimizer_cfg.pop('momentum')
+            optimizer_cfg.pop('nesterov')
         self.optimizer = Optimizer(params=self.model.parameters(), **optimizer_cfg)
 
     def _init_scheduler(self):
         schedule_cfg = copy.deepcopy(self.cfg.schedule.lr_schedule)
         name = schedule_cfg.pop('name')
         Scheduler = getattr(torch.optim.lr_scheduler, name)
+        if name == 'MultiStepLR':
+            schedule_cfg.pop('lr_lambda')
+        elif name == 'LambdaLR':
+            schedule_cfg.pop('milestones')
+            schedule_cfg.pop('gamma')
+            # Learning Rate change from 1.0 times to 0.01 times of initial LR
+            lf = lambda x: ((1 - math.cos(x * math.pi / self.cfg.schedule.total_epochs)) / 2) * (0.01 - 1) + 1
+            schedule_cfg.update(lr_lambda=lf)
         self.lr_scheduler = Scheduler(optimizer=self.optimizer, **schedule_cfg)
 
     def run_step(self, model, meta, mode='train'):
@@ -107,7 +123,8 @@ class Trainer:
                 # 命令行窗口输出训练阶段的日志，epoch、iter、lr部分
                 log_msg = '{}|Epoch{}/{}|Iter{}({}/{})| lr:{:.2e}| '.format(mode, epoch, self.cfg.schedule.total_epochs,
                     self._iter, iter_id, num_iters, self.optimizer.param_groups[0]['lr'])
-                wandb.log({"Learning Rate": self.optimizer.param_groups[0]['lr']})
+                if self.use_wandb:
+                    wandb.log({"Learning Rate": self.optimizer.param_groups[0]['lr']})
                 for l in step_losses:
                     # 命令行窗口输出训练阶段的日志，loss部分
                     log_msg += '{}:{:.4f}| '.format(l, step_losses[l].avg())
@@ -153,7 +170,8 @@ class Trainer:
                 # k 是 loss_bbox, loss_dfl, loss_qfl
                 self.logger.scalar_summary('Epoch_loss/' + k, 'train', v, epoch)
                 # 在Train Loss和k之间加个/起到划分等级的作用，这样这里的3个k都属于Train Loss这个大类下，而下面的3个k则都属于Val Loss大类下，tensorboard也使用/来区分tag等级
-                wandb.log({'Train Loss/' + k: v})
+                if self.use_wandb:
+                    wandb.log({'Train Loss/' + k: v})
             # --------evaluate----------
             if self.cfg.schedule.val_intervals > 0 and epoch % self.cfg.schedule.val_intervals == 0:
                 with torch.no_grad():
@@ -162,7 +180,8 @@ class Trainer:
                     # 下面的和上面的logger.scalar_summary 的tag都是Epoch_loss/' + k，所以它们在tensorboard中是绘制在同一幅图上
                     self.logger.scalar_summary('Epoch_loss/' + k, 'val', v, epoch)
                     # 为了使验证时的准确度和损失的细粒度更高些，请在config yaml里把val_intervals改小，比如1，但是别改到log.interval去！
-                    wandb.log({'Val Loss/' + k: v})
+                    if self.use_wandb:
+                        wandb.log({'Val Loss/' + k: v})
                 eval_results = evaluator.evaluate(results, self.cfg.save_dir, epoch, self.logger, rank=self.rank)
                 if self.cfg.evaluator.save_key in eval_results:  # self.cfg.evaluator.save_key 默认是mAP
                     metric = eval_results[self.cfg.evaluator.save_key]

@@ -39,7 +39,7 @@ class Integral(nn.Module):
         self.reg_max = reg_max
         self.register_buffer('project',
                              torch.linspace(0, self.reg_max, self.reg_max + 1))
-
+        #  上面这句代码会生成一个[1, 2, ..., 15, 16]的列表缓存，并命名为project,用在下面forward()里的self.project
     def forward(self, x):
         """Forward feature from the regression head to get integral result of
         bounding box location.
@@ -166,7 +166,7 @@ class GFLHead(nn.Module):
     def forward(self, feats):
         return multi_apply(self.forward_single, feats, self.scales)
 
-    def forward_single(self, x, scale):
+    def forward_single(self, x, scale):  # nanodet has eliminate this scale
         cls_feat = x
         reg_feat = x
         for cls_conv in self.cls_convs:
@@ -442,6 +442,7 @@ class GFLHead(nn.Module):
         img_width = meta['img_info']['width'].cpu().numpy() \
             if isinstance(meta['img_info']['width'], torch.Tensor) else meta['img_info']['width']
         for result in result_list:
+            # print(f'result = {result}')
             det_bboxes, det_labels = result
             det_bboxes = det_bboxes.cpu().numpy()
             det_bboxes[:, :4] = warp_boxes(det_bboxes[:, :4], np.linalg.inv(warp_matrix), img_width, img_height)
@@ -473,6 +474,7 @@ class GFLHead(nn.Module):
         input_shape = [input_height, input_width]
 
         result_list = []
+        # print(f'cls_scores[0].shape = {cls_scores[0].shape}')  #torch.Size([1, 4, 40, 40]), 下面的shape[0]代表batch_size
         for img_id in range(cls_scores[0].shape[0]):
             cls_score_list = [
                 cls_scores[i][img_id].detach() for i in range(num_levels)
@@ -481,6 +483,7 @@ class GFLHead(nn.Module):
                 bbox_preds[i][img_id].detach() for i in range(num_levels)
             ]
             scale_factor = 1
+            #  get_bboxes_single返回两个值det_bboxes, det_labels，但这里只返回一个dets，所以这两个值组成了dets元组，之后在post_process里会对dets解包
             dets = self.get_bboxes_single(cls_score_list, bbox_pred_list,
                                           input_shape, scale_factor,
                                           device, rescale)
@@ -504,10 +507,10 @@ class GFLHead(nn.Module):
         :param device: device of the tensor
         :return: predict boxes and labels
         """
-        assert len(cls_scores) == len(bbox_preds)
+        assert len(cls_scores) == len(bbox_preds)  # 两者等于3，因为nanodet有3个stage
         mlvl_bboxes = []
         mlvl_scores = []
-        for stride, cls_score, bbox_pred in zip(
+        for stride, cls_score, bbox_pred in zip(  # 使用zip的作用：https://img.imgdb.cn/item/60374d5f5f4313ce25f3ed3d.jpg
                 self.strides, cls_scores, bbox_preds):
             assert cls_score.size()[-2:] == bbox_pred.size()[-2:]
             featmap_size = cls_score.size()[-2:]
@@ -519,7 +522,7 @@ class GFLHead(nn.Module):
             bbox_pred = bbox_pred.permute(1, 2, 0)
             bbox_pred = self.distribution_project(bbox_pred) * stride
 
-            nms_pre = 1000
+            nms_pre = 1000  # 因为40*40的featuremap大小是1600，大于1000，分数较低的600个bbox_pred和scores被去掉了
             if scores.shape[0] > nms_pre:
                 max_scores, _ = scores.max(dim=1)
                 _, topk_inds = max_scores.topk(nms_pre)
@@ -529,6 +532,7 @@ class GFLHead(nn.Module):
 
             bboxes = distance2bbox(center_points, bbox_pred,
                                    max_shape=img_shape)
+            # print(f'bboxes.shape = {bboxes.shape}')  # torch.Size([1000, 4]), torch.Size([400, 4]), torch.Size([100, 4])
             mlvl_bboxes.append(bboxes)
             mlvl_scores.append(scores)
 
@@ -540,13 +544,20 @@ class GFLHead(nn.Module):
         # add a dummy background class at the end of all labels, same with mmdetection2.0
         padding = mlvl_scores.new_zeros(mlvl_scores.shape[0], 1)
         mlvl_scores = torch.cat([mlvl_scores, padding], dim=1)
-
+        # print(f"mlvl_bboxes = {mlvl_bboxes}")
+        # print(f"mlvl_bboxes.shape = {mlvl_bboxes.shape}")  # torch.Size([1500, 4]), 1500 = 1000+400+100
+        # print(f"mlvl_scores = {mlvl_scores}")
+        # print(f"mlvl_scores.shape = {mlvl_scores.shape}")  # torch.Size([1500, 5])
         det_bboxes, det_labels = multiclass_nms(
             mlvl_bboxes,
             mlvl_scores,
             score_thr=0.05,
             nms_cfg=dict(type='nms', iou_threshold=0.6),
             max_num=100)
+        # print(f"det_bboxes = {det_bboxes}")
+        # print(f"det_bboxes.shape = {det_bboxes.shape}")  # torch.Size([42, 5])
+        # print(f"det_labels = {det_labels}")
+        # print(f"det_labels.shape = {det_labels.shape}")  #  torch.Size([42])
         return det_bboxes, det_labels
 
     def get_single_level_center_point(self, featmap_size, stride, dtype, device='cuda', flatten=True):
@@ -578,13 +589,19 @@ class GFLHead(nn.Module):
         :param device: Device of the tensors.
         :return: Grid_cells xyxy position. Size should be [feat_w * feat_h, 4]
         """
+        # print(f'featmap_size is : \n {featmap_size}')  # torch.Size([40, 40]), torch.Size([20, 20]), torch.Size([10, 10]),
+        # print(f'stride is : \n {stride}')  # 8, 16, 32
+        # print(f'scale is : \n {scale}')  # 5, 5, 5
         cell_size = stride * scale
         y, x = self.get_single_level_center_point(
             featmap_size, stride, dtype, device, flatten=True)
+        # print(f'y is : \n {y}')
+        # print(f'x is : \n {x}')
         grid_cells = torch.stack(
             [x - 0.5 * cell_size, y - 0.5 * cell_size,
              x + 0.5 * cell_size, y + 0.5 * cell_size], dim=-1
         )
+        # print(f'grid_cells is : \n {grid_cells}')
         return grid_cells
 
     def grid_cells_to_center(self, grid_cells):
