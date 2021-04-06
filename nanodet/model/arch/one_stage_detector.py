@@ -1,17 +1,17 @@
 import time
 import torch
 import torch.nn as nn
-from ..backbone import build_backbone
-from ..fpn import build_fpn
-from ..head import build_head
+from nanodet.model.backbone import build_backbone
+from nanodet.model.fpn import build_fpn
+from nanodet.model.head import build_head
 
 
-class OneStage(nn.Module):
+class OneStageDetector(nn.Module):
     def __init__(self,
                  backbone_cfg,
                  fpn_cfg=None,
-                 head_cfg=None, ):
-        super(OneStage, self).__init__()
+                 head_cfg=None,):
+        super(OneStageDetector, self).__init__()
         self.backbone = build_backbone(backbone_cfg)
         if backbone_cfg.name == 'ShuffleNetV2' and fpn_cfg is not None:
             # adaptively change fpn_cfg.in_channels according backbone_cfg.model_size
@@ -32,13 +32,10 @@ class OneStage(nn.Module):
 
     def forward(self, x):
         x = self.backbone(x)
-        if hasattr(self, 'fpn') and self.fpn is not None:
+        if hasattr(self, 'fpn'):
             x = self.fpn(x)
         if hasattr(self, 'head'):
-            out = []
-            for xx in x:
-                out.append(self.head(xx))
-            x = tuple(out)
+            x = self.head(x)
         return x
 
     def inference(self, meta):
@@ -59,3 +56,12 @@ class OneStage(nn.Module):
         loss, loss_states = self.head.loss(preds, gt_meta)
 
         return preds, loss, loss_states
+
+
+if __name__ == "__main__":
+    from nanodet.util import cfg, load_config
+
+    args_config = r'../../../config/nanodet-m.yml'
+    load_config(cfg, args_config)
+    detector = OneStageDetector(cfg.model.arch.backbone, cfg.model.arch.fpn, cfg.model.arch.head)
+    print(detector)

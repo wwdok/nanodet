@@ -2,7 +2,7 @@
 save_dir: workspace/dummy # In order to review training results afterwars more clear, set this directory
 model:
   arch:
-    name: GFL
+    name: OneStageDetector
     backbone:
       name: ShuffleNetV2
       model_size: 1.0x

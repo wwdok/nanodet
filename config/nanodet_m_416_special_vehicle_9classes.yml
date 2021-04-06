@@ -2,7 +2,7 @@
 save_dir: workspace/nanodet_m_416_special_vehicle_9classes_sweep # In order to review training results afterwars more clear, set this directory
 model:
   arch:
-    name: GFL
+    name: OneStageDetector
     backbone:
       name: ShuffleNetV2
       model_size: 1.0x
